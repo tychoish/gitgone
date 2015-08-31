@@ -7,6 +7,6 @@ import (
 )
 
 func main() {
-	garenRepo := git.NewRepository("~/garen/")
+	garenRepo := git.NewWrappedRepository("~/garen/")
 	fmt.Printf("\n%+v\n\n", garenRepo)
 }

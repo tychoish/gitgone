@@ -8,6 +8,7 @@ import (
 	"path/filepath"
 	"strings"
 
+	"github.com/tychoish/gitgone/states"
 	"github.com/tychoish/grip"
 )
 
@@ -16,7 +17,7 @@ type repository struct {
 	branch string
 	bare   bool
 	exists bool
-	state  repositoryState
+	state  states.RepositoryState
 
 	branches map[string]bool
 }
@@ -28,7 +29,7 @@ func NewRepository(path string) *repository {
 		path = filepath.Join(u.HomeDir, path[1:])
 	}
 
-	r := &Repository{
+	r := &repository{
 		path:     path,
 		bare:     false,
 		branches: make(map[string]bool),
@@ -42,27 +43,28 @@ func NewRepository(path string) *repository {
 			r.bare = true
 		}
 
-		self.updateBranchTracking()
+		r.updateBranchTracking()
 	} else {
-		r.state = degraded
+		r.state = states.Degraded
 	}
 
 	return r
 }
 
 func (self *repository) updateBranchTracking() {
-	branch, _ := r.runGitCommand("symbolic-ref", "--short", "HEAD")
-	r.branch = strings.Join(branch, "\n")
+	branch, _ := self.runGitCommand("symbolic-ref", "--short", "HEAD")
+	self.branch = strings.Join(branch, "\n")
 
-	branches, _ := r.runGitCommand("branch", "--list", "--no-color")
-	for _, b := range strings.Split(branches, "\n") {
+	branches, _ := self.runGitCommand("branch", "--list", "--no-color")
+	for _, b := range branches {
+		b = strings.TrimLeft(b, " *")
 		self.branches[b] = true
 	}
 
 	grip.Debug("updated branch tracking information.")
 }
 
-func (self *repository) Branch() {
+func (self *repository) Branch() string {
 	self.updateBranchTracking()
 	return self.branch
 }
@@ -91,12 +93,12 @@ func (self *repository) runGitCommand(args ...string) ([]string, error) {
 }
 
 func (self *repository) Clone(remote, branch string) (err error) {
-	if self.exists || _, err = os.Stat(self.path); err != nil {
+	if _, err := os.Stat(self.path); err != nil || self.exists {
 		return fmt.Errorf("could not clone %s (%s) into %s, because repository exists",
 			remote, branch, self.path)
-
 	}
-	_, err := self.runGitCommand("clone", remote, "--branch", branch, filepath.Dir(self.path))
+
+	_, err = self.runGitCommand("clone", remote, "--branch", branch, filepath.Dir(self.path))
 	if err == nil {
 		self.exists = true
 	}
@@ -108,23 +110,25 @@ func (self *repository) CreateTrackingBranch(branch, remote, tracking string) er
 	if exists := self.branches[branch]; exists == true {
 		return fmt.Errorf("branch '%s' exists, not creating a new branch.", branch)
 	} else {
-		err := self.runGitCommand("branch", branch, strings.Join([]string{remote, tracking}, "/"))
+		_, err := self.runGitCommand("branch", branch, strings.Join([]string{remote, tracking}, "/"))
 		self.updateBranchTracking()
 
-		return
+		return err
 	}
 }
 
 func (self *repository) Checkout(ref string) error {
-	return self.runGitCommand("checkout", ref)
+	_, err := self.runGitCommand("checkout", ref)
+	return err
 }
 
 func (self *repository) CheckoutBranch(branch, starting string) error {
 	if exists := self.branches[branch]; exists == true {
 		self.branch = branch
-		return self.runGitCommand("checkout", branch)
+		_, err := self.runGitCommand("checkout", branch)
+		return err
 	} else {
-		err := self.runGitCommand("checkout", "-b", branch, starting)
+		_, err := self.runGitCommand("checkout", "-b", branch, starting)
 
 		self.updateBranchTracking()
 		return err

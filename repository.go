@@ -1,11 +1,7 @@
 package gitgone
 
-//go:generate stringer -type=repositoryState
-type repositoryState int
-
-const (
-	new repositoryState = iota
-	degraded
+import (
+	"github.com/tychoish/gitgone/gitwrap"
 )
 
 type Repository interface {
@@ -15,7 +11,7 @@ type Repository interface {
 	Clone(string, string) error
 	CheckoutBranch(string, string) error
 	Checkout(string) error
-	CheckoutTrackingBranch(string, string) error
+	CreateTrackingBranch(string, string, string) error
 }
 
 type RepositoryManager struct {
@@ -23,9 +19,9 @@ type RepositoryManager struct {
 }
 
 func NewWrappedRepository(path string) *RepositoryManager {
-	return &RepositoryManager{gitwrap.NewRepository()}
+	return &RepositoryManager{gitwrap.NewRepository(path)}
 }
 
-func (self *RepositoryManger) CloneMaster(remote string) error {
+func (self *RepositoryManager) CloneMaster(remote string) error {
 	return self.Clone(remote, "master")
 }
