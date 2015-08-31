@@ -134,3 +134,17 @@ func (self *repository) CheckoutBranch(branch, starting string) error {
 		return err
 	}
 }
+
+func (self *repository) RemoveBranch(branch string, force bool) error {
+	if exists := self.branches[branch]; exists == true {
+		args := []string{"branch", "-d", branch}
+		if force == true {
+			args[1] = "-D"
+		}
+
+		_, err := self.runGitCommand(args...)
+		return err
+	} else {
+		return fmt.Errorf("cannot remove branch %s, does not exist", branch)
+	}
+}

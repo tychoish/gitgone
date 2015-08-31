@@ -9,9 +9,11 @@ type Repository interface {
 	Branch() string
 
 	Clone(string, string) error
-	CheckoutBranch(string, string) error
 	Checkout(string) error
+
+	CheckoutBranch(string, string) error
 	CreateTrackingBranch(string, string, string) error
+	RemoveBranch(string, bool) error
 }
 
 type RepositoryManager struct {
