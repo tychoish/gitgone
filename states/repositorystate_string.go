@@ -4,9 +4,9 @@ package states
 
 import "fmt"
 
-const _RepositoryState_name = "NewDegradedUnresolvedOperationDetached"
+const _RepositoryState_name = "UnknownGoodNewDetachedDegradedUnresolvedOperationIncompleteOperationFailedOperationPartialOperation"
 
-var _RepositoryState_index = [...]uint8{0, 3, 11, 30, 38}
+var _RepositoryState_index = [...]uint8{0, 7, 11, 14, 22, 30, 49, 68, 83, 99}
 
 func (i RepositoryState) String() string {
 	if i < 0 || i+1 >= RepositoryState(len(_RepositoryState_index)) {

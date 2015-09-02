@@ -55,6 +55,10 @@ func NewRepository(path string) *repository {
 	return r
 }
 
+func (self *repository) Path() string {
+	return self.path
+}
+
 func (self *repository) Branch() string {
 	ref, err := self.repo.Head()
 	if err != nil {
@@ -67,6 +71,32 @@ func (self *repository) Branch() string {
 		self.state = states.Degraded
 	}
 	return name
+}
+
+func (self *repository) CreateBranch(name, starting string) error {
+	if starting == "" {
+		starting = "HEAD"
+	}
+
+	ref, err := self.repo.DwimReference(starting)
+	if err != nil {
+		self.state = states.IncompleteOperation
+		return err
+	}
+
+	commit, err := self.repo.LookupCommit(ref.Target())
+	if err != nil {
+		self.state = states.IncompleteOperation
+		return err
+	}
+
+	_, err = self.repo.CreateBranch(name, commit, false, &git.Signature{}, "")
+	if err != nil {
+		self.state = states.FailedOperation
+
+	}
+
+	return err
 }
 
 func (self *repository) BranchExists(name string) bool {
@@ -113,9 +143,8 @@ func (self *repository) Checkout(ref string) error {
 }
 
 func (self *repository) getTree(name string) (tree *git.Tree, err error) {
-	// TODO fix references to use v22 implementation and save this for when v23 comes out
-
-	ref, err := self.repo.References.Dwim(name)
+	// DwimReference became Dwim in the master, but we're pointing to a more stable API.
+	ref, err := self.repo.DwimReference(name)
 	if err != nil {
 		return
 	}
@@ -135,13 +164,18 @@ func (self *repository) IsExists() bool {
 
 func (self *repository) RemoveBranch(branch string) error {
 	var err error
-
 	if self.BranchExists(branch) {
-		// TODO fix reference for v22
-		ref, err := self.repo.References.Lookup(branch)
-		branch := ref.Branch()
+		branch, err := self.repo.LookupBranch(branch, git.BranchLocal)
+		if err != nil {
+			self.state = states.IncompleteOperation
+			return err
+		}
+		err = branch.Delete()
+		if err != nil {
+			self.state = states.FailedOperation
+			return err
 
-		branch.Delete()
+		}
 	} else {
 		return fmt.Errorf("cannot remove branch %s, does not exist", branch)
 	}
@@ -190,20 +224,38 @@ func (self *repository) Merge(baseRef string) error {
 }
 
 func (self *repository) Reset(ref string, hard bool) error {
-	var err error
-
+	// in more recent version of libgit2 there's a Reset method on
+	// the repository object, and we should use this. In the mean
+	// time the following implementation covers the common case.
 	if hard {
-		// hard reset
+		tree, err := self.getTree("HEAD")
+		if err != nil {
+			self.state = states.IncompleteOperation
+			return err
+		}
+
+		err = self.repo.CheckoutTree(tree, &git.CheckoutOpts{Strategy: git.CheckoutForce})
+		if err != nil {
+			self.state = states.FailedOperation
+		}
+		return nil
 	} else {
-		// soft reset
-	}
+		index, err := self.repo.Index()
+		if err != nil {
+			self.state = states.IncompleteOperation
+			return err
+		}
 
-	if err != nil {
-		// TODO: change to incomplete operation
-		self.state = states.UnresolvedOperation
+		if index.Path() == "" {
+			return nil
+		} else {
+			err = os.Remove(index.Path())
+			if err != nil {
+				self.state = states.FailedOperation
+			}
+			return nil
+		}
 	}
-
-	return err
 }
 
 func (self *repository) Fetch(remote string) error {
@@ -215,7 +267,6 @@ func (self *repository) Fetch(remote string) error {
 	remoteNames, err := self.repo.ListRemotes()
 	if err != nil {
 		return fmt.Errorf("no remotes defined")
-
 	}
 
 	for _, name := range remoteNames {
@@ -261,8 +312,36 @@ func (self *repository) Pull(remote string, branch string) error {
 }
 
 func (self *repository) CherryPick(commits ...string) error {
+	var resolvedCommits []*git.Commit
 	for _, c := range commits {
-		// do the thing
+		ref, err := self.repo.DwimReference(c)
+		if err != nil {
+			self.state = states.IncompleteOperation
+			return err
+		}
+		rCommit, err := self.repo.LookupCommit(ref.Target())
+		if err != nil {
+			self.state = states.IncompleteOperation
+			return err
+		}
+
+		resolvedCommits = append(resolvedCommits, rCommit)
+	}
+
+	cpOpts, err := git.DefaultCherrypickOptions()
+	if err != nil {
+		self.state = states.IncompleteOperation
+		return err
+	}
+	cpOpts.CheckoutOpts.Strategy = git.CheckoutSafeCreate
+
+	for _, rc := range resolvedCommits {
+		err = self.repo.Cherrypick(rc, cpOpts)
+		if err != nil {
+			self.state = states.PartialOperation
+			return err
+		}
+
 	}
 
 	return nil

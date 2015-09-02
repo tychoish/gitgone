@@ -11,5 +11,6 @@ const (
 	Degraded
 	UnresolvedOperation
 	IncompleteOperation
-	Salvaged
+	FailedOperation
+	PartialOperation
 )

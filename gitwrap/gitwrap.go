@@ -70,9 +70,23 @@ func (self *repository) BranchExists(name string) bool {
 	return self.branches[name]
 }
 
+func (self *repository) Path() string {
+	return self.path
+}
+
 func (self *repository) Branch() string {
 	self.updateBranchTracking()
 	return self.branch
+}
+
+func (self *repository) CreateBranch(name, starting string) error {
+	if starting == "" {
+		starting = "HEAD"
+	}
+
+	err := self.checkGitCommand("branch", name, starting)
+	self.updateBranchTracking()
+	return err
 }
 
 func (self *repository) runGitCommand(args ...string) ([]string, error) {

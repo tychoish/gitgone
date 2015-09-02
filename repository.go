@@ -19,16 +19,17 @@ import (
 )
 
 type Repository interface {
+	Path() string
 	Branch() string
 	BranchExists(string) bool
 	IsBare() bool
 	IsExists() bool
 
-	Create(string, string) error
 	Clone(string, string) error
 	Checkout(string) error
 
-	RemoveBranch(string, bool) error
+	CreateBranch(string, string) error
+	RemoveBranch(string) error
 
 	Merge(string) error
 	Reset(string, bool) error
@@ -54,14 +55,6 @@ func (self *RepositoryManager) CloneMaster(remote string) error {
 	return self.Clone(remote, "master")
 }
 
-func (self *RepositoryManager) RemoveBranchSafe(branch string) error {
-	return self.RemoveBranch(branch, false)
-}
-
-func (self *RepositoryManager) RemoveBranchForce(branch string) error {
-	return self.RemoveBranch(branch, true)
-}
-
 func (self *RepositoryManager) ResetHeadHard() error {
 	return self.Reset("HEAD", true)
 }
@@ -75,7 +68,7 @@ func (self *RepositoryManager) CheckoutBranch(branch, starting string) error {
 		return fmt.Errorf("cannot checkout new branch on a bare repository", branch)
 	}
 	if !self.IsExists() {
-		return fmt.Errorf("no repository exists at %s", self.path)
+		return fmt.Errorf("no repository exists at %s", self.Path())
 	}
 
 	if !self.BranchExists(branch) {
@@ -85,7 +78,7 @@ func (self *RepositoryManager) CheckoutBranch(branch, starting string) error {
 		}
 	}
 
-	return self.CheckoutBranch(branch)
+	return self.Checkout(branch)
 }
 
 func (self *RepositoryManager) CreateTrackingBranch(branch, remote, tracking string) error {
