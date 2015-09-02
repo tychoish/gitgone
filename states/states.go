@@ -4,8 +4,12 @@ package states
 type RepositoryState int
 
 const (
-	New RepositoryState = iota
+	Unknown RepositoryState = iota
+	Good
+	New
+	Detached
 	Degraded
 	UnresolvedOperation
-	Detached
+	IncompleteOperation
+	Salvaged
 )

@@ -64,23 +64,15 @@ func (self *repository) updateBranchTracking() {
 	grip.Debug("updated branch tracking information.")
 }
 
+func (self *repository) BranchExists(name string) bool {
+	self.updateBranchTracking()
+
+	return self.branches[name]
+}
+
 func (self *repository) Branch() string {
 	self.updateBranchTracking()
 	return self.branch
-}
-
-func (self *repository) SetBranch(branch string) (err error) {
-	self.updateBranchTracking()
-
-	if branch != self.branch {
-		self.branch = branch
-	}
-
-	if self.exists && !self.bare && self.branches[branch] {
-		err = self.Checkout(branch)
-	}
-
-	return
 }
 
 func (self *repository) runGitCommand(args ...string) ([]string, error) {
@@ -113,15 +105,12 @@ func (self *repository) Clone(remote, branch string) (err error) {
 	return err
 }
 
-func (self *repository) CreateTrackingBranch(branch, remote, tracking string) error {
-	if self.branches[branch] {
-		return fmt.Errorf("branch '%s' exists, not creating a new branch.", branch)
-	} else {
-		err := self.checkGitCommand("branch", branch, strings.Join([]string{remote, tracking}, "/"))
-		self.updateBranchTracking()
+func (self *repository) IsBare() bool {
+	return self.bare
+}
 
-		return err
-	}
+func (self *repository) IsExists() bool {
+	return self.exists
 }
 
 func (self *repository) Checkout(ref string) error {
@@ -137,45 +126,16 @@ func (self *repository) Checkout(ref string) error {
 	return err
 }
 
-func (self *repository) CheckoutBranch(branch, starting string) error {
-	if self.bare {
-		return fmt.Errorf("cannot checkout new branch on a bare repository", branch)
-	}
-
-	if !self.exists {
-		return fmt.Errorf("no repository exists at %s", self.path)
-	}
-
-	var err error
-
-	if exists := self.branches[branch]; exists == true {
-		self.branch = branch
-		err = self.checkGitCommand("checkout", branch)
-	} else {
-		err = self.checkGitCommand("checkout", "-b", branch, starting)
-		self.updateBranchTracking()
-	}
-
-	if err != nil {
-		self.state = states.UnresolvedOperation
-	}
-
-	return err
-}
-
-func (self *repository) RemoveBranch(branch string, force bool) error {
-	if exists := self.branches[branch]; exists == true {
-		args := []string{"branch", "-d", branch}
-		if force == true {
-			args[1] = "-D"
-		}
-
-		return self.checkGitCommand(args...)
+func (self *repository) RemoveBranch(branch string) error {
+	if self.BranchExists(branch) {
+		return self.checkGitCommand("branch", "-D", branch)
 	} else {
 		return fmt.Errorf("cannot remove branch %s, does not exist", branch)
 	}
 }
 
+// Rebase() is not in the interface because git2go and gogit are both
+// lack supprt for rebasing.
 func (self *repository) Rebase(baseRef string) error {
 	err := self.checkGitCommand("rebase", baseRef)
 	if err != nil {
@@ -213,16 +173,8 @@ func (self *repository) Fetch(remote string) error {
 	return self.checkGitCommand("fetch", remote)
 }
 
-func (self *repository) Pull(remote string, branch string, rebase bool) error {
-	args := []string{"pull"}
-
-	if rebase {
-		args = append(args, "--rebase")
-	}
-
-	args = append(args, remote, branch)
-
-	err := self.checkGitCommand(args...)
+func (self *repository) Pull(remote string, branch string) error {
+	err := self.checkGitCommand("pull", remote, branch)
 	if err != nil {
 		self.state = states.UnresolvedOperation
 	}

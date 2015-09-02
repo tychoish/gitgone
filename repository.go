@@ -11,27 +11,31 @@
 package gitgone
 
 import (
+	"fmt"
+	"strings"
+
+	"github.com/tychoish/gitgone/gitrect"
 	"github.com/tychoish/gitgone/gitwrap"
 )
 
 type Repository interface {
 	Branch() string
-	SetBranch(string) error
+	BranchExists(string) bool
+	IsBare() bool
+	IsExists() bool
 
+	Create(string, string) error
 	Clone(string, string) error
 	Checkout(string) error
 
-	CheckoutBranch(string, string) error
-	CreateTrackingBranch(string, string, string) error
 	RemoveBranch(string, bool) error
 
-	Rebase(string) error
 	Merge(string) error
 	Reset(string, bool) error
 	CherryPick(...string) error
 
 	Fetch(string) error
-	Pull(string, string, bool) error
+	Pull(string, string) error
 }
 
 type RepositoryManager struct {
@@ -40,6 +44,10 @@ type RepositoryManager struct {
 
 func NewWrappedRepository(path string) *RepositoryManager {
 	return &RepositoryManager{gitwrap.NewRepository(path)}
+}
+
+func NewDirectRepository(path string) *RepositoryManager {
+	return &RepositoryManager{gitrect.NewRepository(path)}
 }
 
 func (self *RepositoryManager) CloneMaster(remote string) error {
@@ -60,4 +68,30 @@ func (self *RepositoryManager) ResetHeadHard() error {
 
 func (self *RepositoryManager) ResetHead() error {
 	return self.Reset("HEAD", false)
+}
+
+func (self *RepositoryManager) CheckoutBranch(branch, starting string) error {
+	if self.IsBare() {
+		return fmt.Errorf("cannot checkout new branch on a bare repository", branch)
+	}
+	if !self.IsExists() {
+		return fmt.Errorf("no repository exists at %s", self.path)
+	}
+
+	if !self.BranchExists(branch) {
+		err := self.CreateBranch(branch, starting)
+		if err != nil {
+			return err
+		}
+	}
+
+	return self.CheckoutBranch(branch)
+}
+
+func (self *RepositoryManager) CreateTrackingBranch(branch, remote, tracking string) error {
+	if self.BranchExists(branch) {
+		return fmt.Errorf("branch '%s' exists, not creating a new branch.", branch)
+	} else {
+		return self.CheckoutBranch(branch, strings.Join([]string{remote, tracking}, "/"))
+	}
 }
