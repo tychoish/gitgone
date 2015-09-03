@@ -18,6 +18,15 @@ import (
 	"github.com/tychoish/gitgone/gitwrap"
 )
 
+// The Repository interface provides an abstract, high-level set of
+// operations that you can provide logically on a singe git
+// repository. As an interface, this provides a way for client code to
+// interfact with existing git repostories without needing to think
+// about the underlying git implementation or interaction mode.
+//
+// Fundamentally, these operations are and should be realtively
+// analogus to the common command line operations that a user migh
+// perform on a git repository during normal development operations.
 type Repository interface {
 	Path() string
 	Branch() string
@@ -37,16 +46,38 @@ type Repository interface {
 
 	Fetch(string) error
 	Pull(string, string) error
+
+	// TOOD add commit staging, creation, push operations by
+	// implementing the following methods:
+	Stage(...stage) error
+	StageAll() error
+	Commit(string) error
+	Ammend(string) error
 }
 
+// RepositoryManger embeds a Repository interface and provides acces
+// to a number of common, operations in addition to the base methods
+// provided by the interface.
 type RepositoryManager struct {
 	Repository
 }
 
+// Constructor for a RepositoryManager backed by an implementation
+// that wrpas calles to the "git" binary. These operations are
+// probably slower, on average, but will definitly behave in ways that
+// proficent users of git may be more comfortable with. Use for
+// repositories that you normally interact with using the "git"
+// binary.
 func NewWrappedRepository(path string) *RepositoryManager {
 	return &RepositoryManager{gitwrap.NewRepository(path)}
 }
 
+// Constructor for a RepositoryManager backed by an implementation
+// that uses the libgit2 implementation. libgit2 is an independent
+// parallel implementation of git designed for library use. While
+// operations are equivalent, to the "wrapped" equivalents, they may
+// differ somewhat, particularyl for more proficient users. The direct
+// operations are likely much more performant.
 func NewDirectRepository(path string) *RepositoryManager {
 	return &RepositoryManager{gitrect.NewRepository(path)}
 }
