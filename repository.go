@@ -14,7 +14,6 @@ import (
 	"fmt"
 	"strings"
 
-	"github.com/tychoish/gitgone/gitrect"
 	"github.com/tychoish/gitgone/gitwrap"
 )
 
@@ -46,13 +45,14 @@ type Repository interface {
 
 	Fetch(string) error
 	Pull(string, string) error
+	Push(string, string) error
 
-	// TOOD add commit staging, creation, push operations by
-	// implementing the following methods:
-	Stage(...stage) error
-	StageAll() error
+	Stage(...string) error
+	StageAllPath(string)
 	Commit(string) error
-	Ammend(string) error
+	CommitAll(string) error
+	Amend(string) error
+	AmendAll(string) error
 }
 
 // RepositoryManger embeds a Repository interface and provides acces
@@ -78,9 +78,12 @@ func NewWrappedRepository(path string) *RepositoryManager {
 // operations are equivalent, to the "wrapped" equivalents, they may
 // differ somewhat, particularyl for more proficient users. The direct
 // operations are likely much more performant.
-func NewDirectRepository(path string) *RepositoryManager {
-	return &RepositoryManager{gitrect.NewRepository(path)}
-}
+
+// TODO: disabled while waiting for missing methods
+
+// func NewDirectRepository(path string) *RepositoryManager {
+// 	return &RepositoryManager{gitrect.NewRepository(path)}
+// }
 
 func (self *RepositoryManager) CloneMaster(remote string) error {
 	return self.Clone(remote, "master")
@@ -118,4 +121,9 @@ func (self *RepositoryManager) CreateTrackingBranch(branch, remote, tracking str
 	} else {
 		return self.CheckoutBranch(branch, strings.Join([]string{remote, tracking}, "/"))
 	}
+}
+
+func (self *RepositoryManager) StageAll() {
+	self.StageAllPath(self.Path())
+
 }

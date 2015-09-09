@@ -197,7 +197,7 @@ func (self *repository) Pull(remote string, branch string) error {
 
 func (self *repository) CherryPick(commits ...string) error {
 	for _, c := range commits {
-		err := self.checkGitCommand(c)
+		err := self.checkGitCommand("cherry-pick", c)
 		if err != nil {
 			self.state = states.UnresolvedOperation
 			return err
@@ -205,4 +205,70 @@ func (self *repository) CherryPick(commits ...string) error {
 	}
 
 	return nil
+}
+
+func (self *repository) Stage(fns ...string) error {
+	var missing []string
+
+	for _, f := range fns {
+		err := self.checkGitCommand("add", f)
+		if err != nil {
+			missing = append(missing, f)
+		}
+	}
+
+	if len(missing) == 0 {
+		return nil
+	} else {
+		return fmt.Errorf("error, could not add: %s", strings.Join(missing, ", "))
+	}
+}
+
+func (self *repository) StageAllPath(path string) {
+	oldCwd, err := os.Getwd()
+	if err != nil {
+		panic(err)
+	}
+
+	if oldCwd != path {
+		err = os.Chdir(path)
+		if err != nil {
+			panic(err)
+		}
+	}
+
+	deletedFiles, _ := self.runGitCommand("ls-files -d")
+
+	catcher := grip.NewCatcher()
+	rmArgs := []string{"rm", "--quiet"}
+	rmArgs = append(rmArgs, deletedFiles...)
+	catcher.Add(self.checkGitCommand(rmArgs...))
+	catcher.Add(self.checkGitCommand("add", "."))
+
+	if oldCwd != path {
+		err = os.Chdir(oldCwd)
+		if err != nil {
+			panic(err)
+		}
+	}
+}
+
+func (self *repository) Commit(message string) error {
+	return self.checkGitCommand("commit", "--message", message)
+}
+
+func (self *repository) CommitAll(message string) error {
+	return self.checkGitCommand("commit", "--all", "--message", message)
+}
+
+func (self *repository) Amend(message string) error {
+	return self.checkGitCommand("commit", "--amend", "--message", message)
+}
+
+func (self *repository) AmendAll(message string) error {
+	return self.checkGitCommand("commit", "--amend", "--all", "--message", message)
+}
+
+func (self *repository) Push(remote, branch string) error {
+	return self.checkGitCommand("push", remote, branch)
 }
