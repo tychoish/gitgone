@@ -8,11 +8,10 @@ import (
 	"path/filepath"
 	"strings"
 
+	"gopkg.in/libgit2/git2go.v23"
+
 	"github.com/tychoish/gitgone/states"
 	"github.com/tychoish/grip"
-
-	//next branch "github.com/libgit2/git2go"
-	"gopkg.in/libgit2/git2go.v22" //stable branch
 )
 
 type repository struct {
@@ -78,7 +77,7 @@ func (self *repository) CreateBranch(name, starting string) error {
 		starting = "HEAD"
 	}
 
-	ref, err := self.repo.DwimReference(starting)
+	ref, err := self.repo.References.Dwim(starting)
 	if err != nil {
 		self.state = states.IncompleteOperation
 		return err
@@ -90,7 +89,7 @@ func (self *repository) CreateBranch(name, starting string) error {
 		return err
 	}
 
-	_, err = self.repo.CreateBranch(name, commit, false, &git.Signature{}, "")
+	_, err = self.repo.CreateBranch(name, commit, false)
 	if err != nil {
 		self.state = states.FailedOperation
 
@@ -134,7 +133,7 @@ func (self *repository) Checkout(ref string) error {
 		return err
 	}
 
-	err = self.repo.CheckoutTree(tree, &git.CheckoutOpts{Strategy: git.CheckoutSafeCreate})
+	err = self.repo.CheckoutTree(tree, &git.CheckoutOpts{Strategy: git.CheckoutRecreateMissing})
 	if err != nil {
 		self.state = states.UnresolvedOperation
 	}
@@ -143,8 +142,7 @@ func (self *repository) Checkout(ref string) error {
 }
 
 func (self *repository) getTree(name string) (tree *git.Tree, err error) {
-	// DwimReference became Dwim in the master, but we're pointing to a more stable API.
-	ref, err := self.repo.DwimReference(name)
+	ref, err := self.repo.References.Dwim(name)
 	if err != nil {
 		return
 	}
@@ -214,7 +212,7 @@ func (self *repository) Merge(baseRef string) error {
 		return err
 	}
 
-	err = self.repo.CheckoutIndex(index, &git.CheckoutOpts{Strategy: git.CheckoutSafeCreate})
+	err = self.repo.CheckoutIndex(index, &git.CheckoutOpts{Strategy: git.CheckoutRecreateMissing})
 	if err != nil {
 		self.state = states.UnresolvedOperation
 		return err
@@ -234,7 +232,7 @@ func (self *repository) Reset(ref string, hard bool) error {
 			return err
 		}
 
-		err = self.repo.CheckoutTree(tree, &git.CheckoutOpts{Strategy: git.CheckoutForce})
+		err = self.repo.CheckoutTree(tree, &git.CheckoutOpts{Strategy: git.CheckoutUseTheirs})
 		if err != nil {
 			self.state = states.FailedOperation
 		}
@@ -264,31 +262,28 @@ func (self *repository) Fetch(remote string) error {
 
 	var remotes []*git.Remote
 
-	remoteNames, err := self.repo.ListRemotes()
+	remoteNames, err := self.repo.Remotes.List()
 	if err != nil {
 		return fmt.Errorf("no remotes defined")
 	}
 
 	for _, name := range remoteNames {
-		r, err := self.repo.LookupRemote(name)
+		r, err := self.repo.Remotes.Lookup(name)
 		if err == nil {
 			remotes = append(remotes, r)
 		}
-
 	}
 
 	catcher := grip.NewCatcher()
 	if remote == "all" {
 		for _, remote := range remotes {
-			// catcher.Add(remote.Fetch([]string{}, &git.FetchOptions{}, ""))
-			catcher.Add(remote.Fetch([]string{}, &git.Signature{}, ""))
+			catcher.Add(remote.Fetch([]string{}, &git.FetchOptions{}, ""))
 		}
 	}
 
 	for _, remote := range remotes {
 		if remote.Name() == remote.Name() {
-			// catcher.Add(remote.Fetch([]string{}, &git.FetchOpts{}, ""))
-			catcher.Add(remote.Fetch([]string{}, &git.Signature{}, ""))
+			catcher.Add(remote.Fetch([]string{}, &git.FetchOptions{}, ""))
 		}
 	}
 
@@ -314,7 +309,7 @@ func (self *repository) Pull(remote string, branch string) error {
 func (self *repository) CherryPick(commits ...string) error {
 	var resolvedCommits []*git.Commit
 	for _, c := range commits {
-		ref, err := self.repo.DwimReference(c)
+		ref, err := self.repo.References.Dwim(c)
 		if err != nil {
 			self.state = states.IncompleteOperation
 			return err
@@ -333,7 +328,7 @@ func (self *repository) CherryPick(commits ...string) error {
 		self.state = states.IncompleteOperation
 		return err
 	}
-	cpOpts.CheckoutOpts.Strategy = git.CheckoutSafeCreate
+	cpOpts.CheckoutOpts.Strategy = git.CheckoutRecreateMissing
 
 	for _, rc := range resolvedCommits {
 		err = self.repo.Cherrypick(rc, cpOpts)
@@ -345,4 +340,235 @@ func (self *repository) CherryPick(commits ...string) error {
 	}
 
 	return nil
+}
+
+func (self *repository) Stage(fns ...string) error {
+	index, err := self.repo.Index()
+	if err != nil {
+		return err
+	}
+
+	callback := func(path, matchedPathSpec string) int {
+		grip.Debugf("adding file %s for %s to index", path, matchedPathSpec)
+		return 0
+	}
+
+	return index.AddAll(fns, git.IndexAddCheckPathspec, callback)
+}
+
+func (self *repository) StageAllPath(path string) {
+	index, err := self.repo.Index()
+	if err != nil {
+		return
+	}
+
+	callback := func(path, matchedPathSpec string) int {
+		grip.Debugf("updating item %s (%s) in index.", path, matchedPathSpec)
+		return 0
+	}
+
+	grip.CatchError(index.UpdateAll([]string{path}, callback))
+}
+
+func (self *repository) getCommitBasics() (signature *git.Signature, tree *git.Tree, err error) {
+	signature, err = self.repo.DefaultSignature()
+	if err != nil {
+		return
+	}
+
+	index, err := self.repo.Index()
+	if err != nil {
+		return
+	}
+
+	ref, err := index.WriteTree()
+	if err != nil {
+		return
+	}
+
+	tree, err = self.repo.LookupTree(ref)
+
+	return
+}
+
+func (self *repository) Commit(message string) error {
+	sig, tree, err := self.getCommitBasics()
+	if err != nil {
+		self.state = states.UnresolvedOperation
+		return err
+	}
+
+	commit, err := self.repo.CreateCommit("HEAD", sig, sig, message, tree)
+	if err == nil {
+		self.state = states.FailedOperation
+		return err
+	} else {
+		grip.Debugf("created commit '%s' with message '%s' in repo '%s'",
+			commit, message, self.path)
+		return nil
+	}
+}
+
+func (self *repository) CommitAll(message string) error {
+	err := self.Stage(self.path)
+	if err != nil {
+		self.state = states.IncompleteOperation
+		return err
+	}
+
+	err = self.Commit(message)
+	if err != nil {
+		self.state = states.FailedOperation
+	}
+
+	return err
+}
+
+func (self *repository) Amend(message string) error {
+	signature, tree, err := self.getCommitBasics()
+	if err != nil {
+		self.state = states.IncompleteOperation
+		return err
+	}
+
+	ref, err := self.repo.Head()
+	if err != nil {
+		self.state = states.IncompleteOperation
+		return err
+	}
+
+	commit, err := self.repo.LookupCommit(ref.Target())
+	if err != nil {
+		self.state = states.IncompleteOperation
+		return err
+	}
+
+	newCommit, err := commit.Amend("HEAD", commit.Author(), signature, message, tree)
+	if err == nil {
+		self.state = states.IncompleteOperation
+		return err
+	} else {
+		grip.Debugf("amended commit '%s' to '%s' with message '%s' in repo '%s'",
+			commit, newCommit, message, self.path)
+		return nil
+	}
+}
+
+func (self *repository) AmendAll(message string) error {
+	err := self.Stage(self.path)
+
+	if err != nil {
+		self.state = states.IncompleteOperation
+		return err
+	} else {
+	}
+
+	err = self.Amend(message)
+	if err != nil {
+		self.state = states.FailedOperation
+	}
+	return err
+
+}
+
+func (self *repository) Push(remote, branch string) error {
+	remoteRepo, err := self.repo.Remotes.Lookup(remote)
+	if err != nil {
+		self.state = states.IncompleteOperation
+		return err
+	}
+
+	refspec := fmt.Sprintf("refs/heads/%s", branch)
+
+	_, err = self.repo.References.Lookup(refspec)
+	if err != nil {
+		self.state = states.IncompleteOperation
+		return err
+	}
+
+	err = remoteRepo.Push([]string{refspec}, nil)
+	if err != nil {
+		self.state = states.FailedOperation
+	}
+
+	return err
+}
+
+func (self *repository) CreateTag(name, sha, message string, force bool) error {
+	oid, err := git.NewOid(sha)
+	if err != nil {
+		self.state = states.FailedOperation
+		return err
+	}
+
+	commit, err := self.repo.LookupCommit(oid)
+	if err != nil {
+		self.state = states.IncompleteOperation
+		return err
+
+	}
+
+	signature, err := self.repo.DefaultSignature()
+	if err != nil {
+		self.state = states.FailedOperation
+		return err
+
+	}
+
+	if message == "" {
+		oid, err = self.repo.Tags.CreateLightweight(name, commit, force)
+	} else {
+		oid, err = self.repo.Tags.Create(name, commit, signature, message)
+	}
+
+	grip.Debugf("created tag '%s' of commit '%s' with hash '%s' in repo '%s'",
+		name, commit, self.path)
+
+	return err
+}
+
+func (self *repository) DeleteTag(name string) error {
+	tag, err := self.repo.References.Lookup(name)
+	if err != nil {
+		self.state = states.FailedOperation
+		return err
+	}
+
+	err = tag.Delete()
+	if err != nil {
+		self.state = states.FailedOperation
+		return err
+	}
+
+	return err
+}
+
+func (self *repository) IsTagged(name, sha string, lightweight bool) bool {
+	oid, err := git.NewOid(sha)
+	if err != nil {
+		self.state = states.FailedOperation
+		return false
+	}
+
+	ref, err := self.repo.References.Lookup(fmt.Sprintf("refs/tags/%s", name))
+	if err != nil {
+		return false
+	}
+
+	if ref.Target() == oid {
+		if lightweight == true {
+			return true
+		} else {
+			tag, err := self.repo.LookupTag(ref.Target())
+			if err != nil {
+				return false
+			} else {
+				if tag.Message() != "" {
+					return false
+				}
+				return true
+			}
+		}
+	}
+	return false
 }

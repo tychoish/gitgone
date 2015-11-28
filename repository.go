@@ -14,6 +14,7 @@ import (
 	"fmt"
 	"strings"
 
+	"github.com/tychoish/gitgone/gitrect"
 	"github.com/tychoish/gitgone/gitwrap"
 )
 
@@ -47,8 +48,13 @@ type Repository interface {
 	Pull(string, string) error
 	Push(string, string) error
 
+	CreateTag(string, string, string, bool) error
+	DeleteTag(string) error
+	IsTagged(string, string, bool) bool
+
 	Stage(...string) error
 	StageAllPath(string)
+
 	Commit(string) error
 	CommitAll(string) error
 	Amend(string) error
@@ -76,14 +82,11 @@ func NewWrappedRepository(path string) *RepositoryManager {
 // that uses the libgit2 implementation. libgit2 is an independent
 // parallel implementation of git designed for library use. While
 // operations are equivalent, to the "wrapped" equivalents, they may
-// differ somewhat, particularyl for more proficient users. The direct
+// differ somewhat, particularly for more proficient users. The direct
 // operations are likely much more performant.
-
-// TODO: disabled while waiting for missing methods
-
-// func NewDirectRepository(path string) *RepositoryManager {
-// 	return &RepositoryManager{gitrect.NewRepository(path)}
-// }
+func NewDirectRepository(path string) *RepositoryManager {
+	return &RepositoryManager{gitrect.NewRepository(path)}
+}
 
 func (self *RepositoryManager) CloneMaster(remote string) error {
 	return self.Clone(remote, "master")
@@ -121,9 +124,4 @@ func (self *RepositoryManager) CreateTrackingBranch(branch, remote, tracking str
 	} else {
 		return self.CheckoutBranch(branch, strings.Join([]string{remote, tracking}, "/"))
 	}
-}
-
-func (self *RepositoryManager) StageAll() {
-	self.StageAllPath(self.Path())
-
 }

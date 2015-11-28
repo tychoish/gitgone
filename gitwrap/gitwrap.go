@@ -79,6 +79,11 @@ func (self *repository) Branch() string {
 	return self.branch
 }
 
+func (self *repository) getRef(name string) (string, error) {
+	output, err := self.runGitCommand("rev-parse", "--verify", name)
+	return output[0], err
+}
+
 func (self *repository) CreateBranch(name, starting string) error {
 	if starting == "" {
 		starting = "HEAD"
@@ -271,4 +276,63 @@ func (self *repository) AmendAll(message string) error {
 
 func (self *repository) Push(remote, branch string) error {
 	return self.checkGitCommand("push", remote, branch)
+}
+
+func (self *repository) CreateTag(name, sha, message string, force bool) error {
+	if sha == "" {
+		sha = "HEAD"
+	}
+
+	if message == "" {
+		if force {
+			return self.checkGitCommand("tag", "--force", name, sha)
+		} else {
+			return self.checkGitCommand("tag", name, sha)
+		}
+	} else {
+		if force {
+			return self.checkGitCommand("tag", "--force", "--annotate",
+				"--message", message, name, sha)
+		} else {
+			return self.checkGitCommand("tag", "--annotate", "--message", message, name, sha)
+		}
+	}
+}
+
+func (self *repository) DeleteTag(name string) error {
+	return self.checkGitCommand("tag", "--delete", name)
+}
+
+func (self *repository) IsTagged(name, sha string, lightweight bool) bool {
+	var err error
+
+	if sha == "" || sha == "HEAD" {
+		sha, err = self.getRef("HEAD")
+		if err != nil {
+			return false
+		}
+	}
+
+	if lightweight {
+		err = self.checkGitCommand("describe", "--tags", name)
+		return true
+	} else {
+		err = self.checkGitCommand("describe", name)
+	}
+
+	if err != nil {
+		grip.CatchError(err)
+		return false
+	}
+
+	taggedCommit, err := self.runGitCommand("ref-list", "--max-count", "1", sha)
+	if err != nil {
+		grip.CatchError(err)
+		return false
+	}
+
+	if taggedCommit[0] == sha {
+		return true
+	}
+	return false
 }
