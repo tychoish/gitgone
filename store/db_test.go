@@ -46,7 +46,6 @@ func (s *DBSuite) TestDBCreationAndCaching(c *C) {
 		c.Assert(err, IsNil)
 		c.Assert(db.path, Equals, s.dir)
 		c.Assert(len(dbCache.dbs), Equals, 1)
-
 	}
 	c.Assert(len(dbCache.dbs), Equals, 1)
 

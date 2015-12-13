@@ -135,10 +135,19 @@ func treeAdd(repo *git.Repository, tree *git.Tree, key string, valueId *git.Oid)
 		if key == "/" {
 			return subTree, nil
 		}
+
+		// if the subtree is nill at this point, then we've
+		// hit an error, and should error now -- tycho
+		if subTree == nil {
+			return nil, fmt.Errorf("subTree for %s nil, aborting", key)
+		}
+
 		// Otherwise we're inserting into the current tree
-		if err := builder.Insert(leaf, subTree.Id(), 040000); err != nil {
+		err := builder.Insert(leaf, subTree.Id(), 040000)
+		if err != nil {
 			return nil, err
 		}
+
 		newTreeId, err := builder.Write()
 		if err != nil {
 			return nil, err
@@ -340,4 +349,14 @@ func isGitIterOver(err error) bool {
 		return false
 	}
 	return gitErr.Code == git.ErrIterOver
+}
+
+// emptyTree creates an empty Git tree and returns its ID
+// (the ID will always be the same)
+func emptyTree(repo *git.Repository) (*git.Oid, error) {
+	builder, err := repo.TreeBuilder()
+	if err != nil {
+		return nil, err
+	}
+	return builder.Write()
 }

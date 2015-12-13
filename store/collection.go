@@ -30,13 +30,7 @@ func (db *Database) Collection(name string) *Collection {
 
 		return coll
 	} else {
-		coll := &Collection{
-			name: name,
-			db:   db,
-		}
-		coll.Lock()
-		coll.setCommit()
-		coll.Unlock()
+		coll := db.createCollectionUnsafe(name)
 
 		db.Lock()
 		defer db.Unlock()
@@ -44,6 +38,18 @@ func (db *Database) Collection(name string) *Collection {
 
 		return coll
 	}
+}
+
+func (db *Database) createCollectionUnsafe(name string) *Collection {
+	coll := &Collection{
+		name: name,
+		db:   db,
+	}
+	coll.Lock()
+	coll.resetUnsafe()
+	coll.Unlock()
+
+	return coll
 }
 
 func (c *Collection) Get(key string) (out []byte, err error) {
@@ -152,11 +158,17 @@ func (c *Collection) resetUnsafe() error {
 	if err != nil {
 		return err
 	}
-	c.tree.Free()
+
+	if c.tree != nil {
+		c.tree.Free()
+	}
 	c.tree = cleanTree
 
-	c.commit.Free()
+	if c.commit != nil {
+		c.commit.Free()
+	}
 	c.commit = tipCommit
+
 	return nil
 }
 
@@ -168,7 +180,9 @@ func (c *Collection) setCommit() error {
 
 	tipCommit, err := c.db.repo.LookupCommit(tip.Target())
 
-	c.commit.Free()
+	if c.commit != nil {
+		c.commit.Free()
+	}
 	c.commit = tipCommit
 	return nil
 }

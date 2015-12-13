@@ -65,6 +65,7 @@ func (s *DBSuite) TestConcurrentInserts(c *C) {
 			wg.Done()
 		}(strconv.Itoa(i))
 	}
+	s.db.loadCollections()
 	wg.Wait()
 }
 
