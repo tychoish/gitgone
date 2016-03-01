@@ -1,6 +1,7 @@
 package gitrect
 
 import (
+	"errors"
 	"fmt"
 	"io/ioutil"
 	"os"
@@ -221,6 +222,12 @@ func (self *repository) Merge(baseRef string) error {
 	return err
 }
 
+func (self *repository) Rebase(baseRef string) error {
+	err := errors.New("rebases are not supported with the direct interface at this time.")
+	grip.CatchEmergencyPanic(err)
+	return err
+}
+
 func (self *repository) Reset(ref string, hard bool) error {
 	// in more recent version of libgit2 there's a Reset method on
 	// the repository object, and we should use this. In the mean
@@ -303,6 +310,12 @@ func (self *repository) Pull(remote string, branch string) error {
 
 	}
 
+	return err
+}
+
+func (self *repository) PullRebase(remote string, branch string) error {
+	err := errors.New("rebases are not supported with the direct interface at this time.")
+	grip.CatchEmergencyPanic(err)
 	return err
 }
 

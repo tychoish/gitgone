@@ -41,11 +41,13 @@ type Repository interface {
 	RemoveBranch(string) error
 
 	Merge(string) error
+	Rebase(string) error
 	Reset(string, bool) error
 	CherryPick(...string) error
 
 	Fetch(string) error
 	Pull(string, string) error
+	PullRebase(string, string) error
 	Push(string, string) error
 
 	CreateTag(string, string, string, bool) error

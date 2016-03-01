@@ -200,6 +200,14 @@ func (self *repository) Pull(remote string, branch string) error {
 	return err
 }
 
+func (self *repository) PullRebase(remote string, branch string) error {
+	err := self.checkGitCommand("pull", "--rebase", remote, branch)
+	if err != nil {
+		self.state = states.UnresolvedOperation
+	}
+	return err
+}
+
 func (self *repository) CherryPick(commits ...string) error {
 	for _, c := range commits {
 		err := self.checkGitCommand("cherry-pick", c)
